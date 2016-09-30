@@ -4,7 +4,7 @@ import argparse
 import sqlite3
 import time
 import threading
-from subprocess import Popen, PIPE, call
+from subprocess import Popen, PIPE
 
 
 logger = logging.getLogger('NDStore')
@@ -52,13 +52,18 @@ def main(filter=''):
     try:
         for line in tshark.stdout:
             if line.lstrip().startswith('<pr'):  # <proto ... >
-                with cursor_lock:
-                    proto_name = proto_reobj.search(line).group('name')
-                    timestamp = time.time()
-                    cur.executemany('''INSERT INTO NDStore
-                                   VALUES (?, ?)''', (proto_name, timestamp))
-                    conn.commit()
-                    logger.info('Commited {}'.format(proto_name))
+                proto_name = proto_reobj.search(line).group('name')
+                timestamp = time.time()
+                values.append((proto_name, timestamp))
+
+            if len(values) > 50:
+                cursor_lock.acquire()
+                cur.executemany('''INSERT INTO NDStore
+                                   VALUES (?, ?)''', values)
+                conn.commit()
+                values.clear()
+                logger.info('Commited')
+                cursor_lock.release()
     except:
         logger.exception('____________________________________________________')
 

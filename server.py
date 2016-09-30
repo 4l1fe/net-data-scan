@@ -19,7 +19,9 @@ cur = conn.cursor()
 class MainHandler(tornado.web.RequestHandler):
 
     def get(self):
-        cur.execute('SELECT rowid, packet FROM NDStore ORDER BY rowid DESC LIMIT 10 ;')
+        cur.execute('''SELECT protocol, count(*)
+                       FROM NDStore
+                       GROUP BY protocol;''')
         self.render('admin.html', title='NDStore admin', packets=cur)
 
 
