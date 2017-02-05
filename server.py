@@ -1,11 +1,7 @@
-import os
 import sqlite3
 import collections
-import tornado.ioloop
-import tornado.web
-from tornado.options import define, options
+import aiohttp
 
-define('port', default=8000)
 
 NamedRow = collections.namedtuple('NamedRow', 'rowid packet')
 def NamedRowFactory(cursor, row):
@@ -16,19 +12,45 @@ conn.row_factory = NamedRowFactory
 cur = conn.cursor()
 
 
-class MainHandler(tornado.web.RequestHandler):
+async def index(request):
+    return aiohttp.web.Response('')
 
-    def get(self):
-        cur.execute('''SELECT protocol, count(*)
-                       FROM NDStore
-                       GROUP BY protocol;''')
-        self.render('admin.html', title='NDStore admin', packets=cur)
+
+async def websocket_handler(request):
+
+    wsr = aiohttp.web.WebSocketResponse()
+    await wsr.prepare(request)
+
+    async for msg in wsr:
+        if msg.type == aiohttp.WSMsgType.TEXT:
+            if msg.data == 'close':
+                await wsr.close()
+            else:
+                cur.execute('''SELECT protocol, count(*)
+                               FROM NDStore
+                               GROUP BY protocol;''')
+
+                s = ''
+                for p, c in cur:
+                    s += '{}({})\n'.format(p,c)
+
+                wsr.send_str(s)
+        elif msg.type == aiohttp.WSMsgType.ERROR:
+            print('wsr connection closed with exception %s' %
+                  wsr.exception())
+
+    print('websocket connection closed')
+
+    return wsr
+
+    # cur.execute('''SELECT protocol, count(*)
+    #                FROM NDStore
+    #                GROUP BY protocol;''')
+    # self.render('admin.html', title='NDStore admin', packets=cur)
 
 
 if __name__ == "__main__":
-    application = tornado.web.Application([
-        (r"/", MainHandler),
-    ], debug=True,
-       static_path=os.path.join(os.path.dirname(__file__), "static"))
-    application.listen(options.port)
-    tornado.ioloop.IOLoop.current().start()
+    app = aiohttp.web.Application()
+    app.router.add_get('/', index)
+    app.router.add_get('/ws', websocket_handler)
+    aiohttp.web.run_app(app)
